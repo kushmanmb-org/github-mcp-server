@@ -802,6 +802,14 @@ The following sets of tools are available:
   - `repo`: Repository name (string, required)
   - `tree_sha`: The SHA1 value or ref (branch or tag) name of the tree. Defaults to the repository's default branch (string, optional)
 
+- **update_ref** - Update git reference
+  - **Required OAuth Scopes**: `repo`
+  - `force`: Indicates whether to force the update or to make sure the update is a fast-forward update. Default is false (boolean, optional)
+  - `owner`: Repository owner (username or organization) (string, required)
+  - `ref`: The fully qualified reference to update, e.g. 'refs/heads/main' for a branch or 'refs/tags/v1.0' for a tag (string, required)
+  - `repo`: Repository name (string, required)
+  - `sha`: The SHA1 value to set this reference to (string, required)
+
 </details>
 
 <details>

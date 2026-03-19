@@ -175,3 +175,93 @@ func GetRepositoryTree(t translations.TranslationHelperFunc) inventory.ServerToo
 		},
 	)
 }
+
+// UpdateRef creates a tool to update a git reference in a GitHub repository.
+func UpdateRef(t translations.TranslationHelperFunc) inventory.ServerTool {
+	return NewTool(
+		ToolsetMetadataGit,
+		mcp.Tool{
+			Name:        "update_ref",
+			Description: t("TOOL_UPDATE_REF_DESCRIPTION", "Update a git reference (branch or tag) to point to a new commit SHA in a GitHub repository"),
+			Annotations: &mcp.ToolAnnotations{
+				Title:        t("TOOL_UPDATE_REF_USER_TITLE", "Update git reference"),
+				ReadOnlyHint: false,
+			},
+			InputSchema: &jsonschema.Schema{
+				Type: "object",
+				Properties: map[string]*jsonschema.Schema{
+					"owner": {
+						Type:        "string",
+						Description: "Repository owner (username or organization)",
+					},
+					"repo": {
+						Type:        "string",
+						Description: "Repository name",
+					},
+					"ref": {
+						Type:        "string",
+						Description: "The fully qualified reference to update, e.g. 'refs/heads/main' for a branch or 'refs/tags/v1.0' for a tag",
+					},
+					"sha": {
+						Type:        "string",
+						Description: "The SHA1 value to set this reference to",
+					},
+					"force": {
+						Type:        "boolean",
+						Description: "Indicates whether to force the update or to make sure the update is a fast-forward update. Default is false",
+						Default:     json.RawMessage(`false`),
+					},
+				},
+				Required: []string{"owner", "repo", "ref", "sha"},
+			},
+		},
+		[]scopes.Scope{scopes.Repo},
+		func(ctx context.Context, deps ToolDependencies, _ *mcp.CallToolRequest, args map[string]any) (*mcp.CallToolResult, any, error) {
+			owner, err := RequiredParam[string](args, "owner")
+			if err != nil {
+				return utils.NewToolResultError(err.Error()), nil, nil
+			}
+			repo, err := RequiredParam[string](args, "repo")
+			if err != nil {
+				return utils.NewToolResultError(err.Error()), nil, nil
+			}
+			ref, err := RequiredParam[string](args, "ref")
+			if err != nil {
+				return utils.NewToolResultError(err.Error()), nil, nil
+			}
+			sha, err := RequiredParam[string](args, "sha")
+			if err != nil {
+				return utils.NewToolResultError(err.Error()), nil, nil
+			}
+			force, err := OptionalBoolParamWithDefault(args, "force", false)
+			if err != nil {
+				return utils.NewToolResultError(err.Error()), nil, nil
+			}
+
+			client, err := deps.GetClient(ctx)
+			if err != nil {
+				return utils.NewToolResultError("failed to get GitHub client"), nil, nil
+			}
+
+			updatedRef, resp, err := client.Git.UpdateRef(ctx, owner, repo, ref, github.UpdateRef{
+				SHA:   sha,
+				Force: github.Ptr(force),
+			})
+			if err != nil {
+				return ghErrors.NewGitHubAPIErrorResponse(ctx,
+					"failed to update git reference",
+					resp,
+					err,
+				), nil, nil
+			}
+			defer func() { _ = resp.Body.Close() }()
+
+			r, err := json.Marshal(updatedRef)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to marshal response: %w", err)
+			}
+
+			return utils.NewToolResultText(string(r)), nil, nil
+		},
+	)
+}

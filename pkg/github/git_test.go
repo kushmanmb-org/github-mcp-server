@@ -175,3 +175,116 @@ func Test_GetRepositoryTree(t *testing.T) {
 		})
 	}
 }
+
+func Test_UpdateRef(t *testing.T) {
+	// Verify tool definition once
+	toolDef := UpdateRef(translations.NullTranslationHelper)
+	require.NoError(t, toolsnaps.Test(toolDef.Tool.Name, toolDef.Tool))
+
+	assert.Equal(t, "update_ref", toolDef.Tool.Name)
+	assert.NotEmpty(t, toolDef.Tool.Description)
+	assert.False(t, toolDef.Tool.Annotations.ReadOnlyHint)
+
+	inputSchema, ok := toolDef.Tool.InputSchema.(*jsonschema.Schema)
+	require.True(t, ok, "expected InputSchema to be *jsonschema.Schema")
+	assert.Contains(t, inputSchema.Properties, "owner")
+	assert.Contains(t, inputSchema.Properties, "repo")
+	assert.Contains(t, inputSchema.Properties, "ref")
+	assert.Contains(t, inputSchema.Properties, "sha")
+	assert.Contains(t, inputSchema.Properties, "force")
+	assert.ElementsMatch(t, inputSchema.Required, []string{"owner", "repo", "ref", "sha"})
+
+	mockRef := &github.Reference{
+		Ref: github.Ptr("refs/heads/main"),
+		URL: github.Ptr("https://api.github.com/repos/owner/repo/git/refs/heads/main"),
+		Object: &github.GitObject{
+			Type: github.Ptr("commit"),
+			SHA:  github.Ptr("newsha123"),
+			URL:  github.Ptr("https://api.github.com/repos/owner/repo/git/commits/newsha123"),
+		},
+	}
+
+	tests := []struct {
+		name           string
+		mockedClient   *http.Client
+		requestArgs    map[string]any
+		expectError    bool
+		expectedErrMsg string
+	}{
+		{
+			name: "successfully update ref",
+			mockedClient: MockHTTPClientWithHandlers(map[string]http.HandlerFunc{
+				PatchReposGitRefsByOwnerByRepoByRef: mockResponse(t, http.StatusOK, mockRef),
+			}),
+			requestArgs: map[string]any{
+				"owner": "owner",
+				"repo":  "repo",
+				"ref":   "refs/heads/main",
+				"sha":   "newsha123",
+			},
+		},
+		{
+			name: "successfully force update ref",
+			mockedClient: MockHTTPClientWithHandlers(map[string]http.HandlerFunc{
+				PatchReposGitRefsByOwnerByRepoByRef: mockResponse(t, http.StatusOK, mockRef),
+			}),
+			requestArgs: map[string]any{
+				"owner": "owner",
+				"repo":  "repo",
+				"ref":   "refs/heads/main",
+				"sha":   "newsha123",
+				"force": true,
+			},
+		},
+		{
+			name: "ref not found",
+			mockedClient: MockHTTPClientWithHandlers(map[string]http.HandlerFunc{
+				PatchReposGitRefsByOwnerByRepoByRef: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					w.WriteHeader(http.StatusUnprocessableEntity)
+					_, _ = w.Write([]byte(`{"message": "Reference cannot be updated"}`))
+				}),
+			}),
+			requestArgs: map[string]any{
+				"owner": "owner",
+				"repo":  "repo",
+				"ref":   "refs/heads/nonexistent",
+				"sha":   "newsha123",
+			},
+			expectError:    true,
+			expectedErrMsg: "failed to update git reference",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			client := github.NewClient(tc.mockedClient)
+			deps := BaseDeps{
+				Client: client,
+			}
+			handler := toolDef.Handler(deps)
+
+			request := createMCPRequest(tc.requestArgs)
+
+			result, err := handler(ContextWithDeps(context.Background(), deps), &request)
+
+			if tc.expectError {
+				require.NoError(t, err)
+				require.True(t, result.IsError)
+				errorContent := getErrorResult(t, result)
+				assert.Contains(t, errorContent.Text, tc.expectedErrMsg)
+			} else {
+				require.NoError(t, err)
+				require.False(t, result.IsError)
+
+				textContent := getTextResult(t, result)
+
+				var refResponse map[string]any
+				unmarshalErr := json.Unmarshal([]byte(textContent.Text), &refResponse)
+				require.NoError(t, unmarshalErr)
+
+				assert.Contains(t, refResponse, "ref")
+				assert.Contains(t, refResponse, "object")
+			}
+		})
+	}
+}
