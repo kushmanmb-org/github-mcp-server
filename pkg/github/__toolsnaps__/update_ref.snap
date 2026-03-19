@@ -1,0 +1,39 @@
+{
+  "annotations": {
+    "title": "Update git reference"
+  },
+  "description": "Update a git reference (branch or tag) to point to a new commit SHA in a GitHub repository",
+  "inputSchema": {
+    "properties": {
+      "force": {
+        "default": false,
+        "description": "Indicates whether to force the update or to make sure the update is a fast-forward update. Default is false",
+        "type": "boolean"
+      },
+      "owner": {
+        "description": "Repository owner (username or organization)",
+        "type": "string"
+      },
+      "ref": {
+        "description": "The fully qualified reference to update, e.g. 'refs/heads/main' for a branch or 'refs/tags/v1.0' for a tag",
+        "type": "string"
+      },
+      "repo": {
+        "description": "Repository name",
+        "type": "string"
+      },
+      "sha": {
+        "description": "The SHA1 value to set this reference to",
+        "type": "string"
+      }
+    },
+    "required": [
+      "owner",
+      "repo",
+      "ref",
+      "sha"
+    ],
+    "type": "object"
+  },
+  "name": "update_ref"
+}

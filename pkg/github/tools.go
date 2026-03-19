@@ -188,6 +188,7 @@ func AllTools(t translations.TranslationHelperFunc) []inventory.ServerTool {
 
 		// Git tools
 		GetRepositoryTree(t),
+		UpdateRef(t),
 
 		// Issue tools
 		IssueRead(t),
